@@ -18,6 +18,13 @@ export const DAYN: Record<DayKey, string> = {
   lun: "Lunes", mar: "Martes", mie: "Miércoles", jue: "Jueves", vie: "Viernes", sab: "Sábado", dom: "Domingo",
 };
 export const REASONS = ["Spam o publicidad", "Lenguaje ofensivo", "No es de esta cafetería", "Información falsa", "Otro motivo"];
+export const CAFE_REASONS: { code: "closed" | "other_place" | "duplicate" | "wrong_data"; label: string }[] = [
+  { code: "closed", label: "Cerró permanentemente" },
+  { code: "other_place", label: "Ahora es otra cafetería" },
+  { code: "duplicate", label: "Está repetida" },
+  { code: "wrong_data", label: "Los datos están mal" },
+];
+export const reasonLabel = (code: string) => CAFE_REASONS.find((r) => r.code === code)?.label ?? code;
 export const PRICEHINT = "Precio de un café: $ menos de $50 · $$ $50–80 · $$$ $80–120 · $$$$ más de $120";
 
 const mins = (t: string) => {

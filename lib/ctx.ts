@@ -2,7 +2,7 @@
 
 import { createContext, useContext } from "react";
 import type { User } from "@supabase/supabase-js";
-import type { Cafe, Draft, FavStatus, Profile, Report, Review, View } from "./types";
+import type { Cafe, CafeReason, CafeReport, Draft, FavStatus, Profile, Report, Review, View } from "./types";
 import type { Route, RouteMode } from "./routing";
 
 export type Filters = { q: string; onlyOpen: boolean; onlyFav: boolean; near: boolean; tag: string | null };
@@ -16,6 +16,9 @@ export interface AppCtx {
   me: Profile | null;
   isAdmin: boolean;
   cafes: Cafe[];
+  closedCafes: Cafe[];
+  cafeReports: CafeReport[];
+  myCafeReports: Set<string>;
   visible: Cafe[];
   reviews: Review[];
   profiles: Record<string, Profile>;
@@ -60,6 +63,9 @@ export interface AppCtx {
   deleteReview: (id: string) => Promise<void>;
   reportReview: (reviewId: string, reason: string) => Promise<void>;
   dismissReports: (reviewId: string) => Promise<void>;
+  reportCafe: (cafeId: string, reason: CafeReason, note: string) => Promise<void>;
+  setCafeClosed: (cafeId: string, closed: boolean) => Promise<void>;
+  dismissCafeReports: (cafeId: string) => Promise<void>;
   toggleFav: (cafeId: string, st: FavStatus) => Promise<void>;
   renameMe: (name: string) => Promise<void>;
   signOut: () => Promise<void>;

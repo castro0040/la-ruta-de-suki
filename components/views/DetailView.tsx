@@ -3,16 +3,19 @@
 import { useState } from "react";
 import { useApp } from "@/lib/ctx";
 import { photoUrl } from "@/lib/supabase";
-import { DAYN, DAYS, ORDER, draftFromCafe, fmt, hasHours, openState, safeIg, safePhone, safeWeb, stateText, kmText } from "@/lib/utils";
+import { CAFE_REASONS, DAYN, DAYS, ORDER, draftFromCafe, fmt, hasHours, openState, safeIg, safePhone, safeWeb, stateText, kmText } from "@/lib/utils";
+import type { CafeReason } from "@/lib/types";
 import { durText, mapLinks } from "@/lib/routing";
 import { Price, ReviewItem, Stars, openLightbox } from "../ui";
 
 export default function DetailView() {
   const {
     cafes, selId, go, stats, reviews, user, favs, toggleFav, isAdmin, showOnMap, deleteCafe, distanceTo,
-    route, routeBusy, routeErr, requestRoute, clearRoute,
+    route, routeBusy, routeErr, requestRoute, clearRoute, setCafeClosed,
   } = useApp();
   const [confirmDel, setConfirmDel] = useState(false);
+  const [confirmClose, setConfirmClose] = useState(false);
+  const [adminErr, setAdminErr] = useState("");
   const [copied, setCopied] = useState(false);
   const c = cafes.find((x) => x.id === selId);
   if (!c) return null;
@@ -72,7 +75,27 @@ export default function DetailView() {
             {confirmDel ? "¿Seguro? Toca otra vez" : "Eliminar"}
           </button>
         )}
+        {isAdmin && (
+          <button
+            className="btn sm danger"
+            type="button"
+            onClick={async () => {
+              if (!confirmClose) return setConfirmClose(true);
+              setAdminErr("");
+              try {
+                await setCafeClosed(c.id, true);
+                go("list");
+              } catch (x) {
+                setConfirmClose(false);
+                setAdminErr(x instanceof Error ? x.message : "No se pudo marcar como cerrada");
+              }
+            }}
+          >
+            {confirmClose ? "¿Seguro? Toca otra vez" : "Marcar como cerrada"}
+          </button>
+        )}
       </div>
+      {adminErr && <div className="err" style={{ marginTop: 8 }}>{adminErr}</div>}
 
       <h3>Cómo llegar</h3>
       <div className="row">
@@ -184,6 +207,9 @@ export default function DetailView() {
         <div className="hint">Todavía no tenemos el horario de este lugar.</div>
       )}
 
+      <h3>¿Algo está mal?</h3>
+      <CafeReportForm cafeId={c.id} />
+
       <h3>Reseñas</h3>
       <ReviewForm cafeId={c.id} />
       <div>
@@ -192,6 +218,76 @@ export default function DetailView() {
         )}
       </div>
     </>
+  );
+}
+
+function CafeReportForm({ cafeId }: { cafeId: string }) {
+  const { user, go, reportCafe, myCafeReports } = useApp();
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState<CafeReason>("closed");
+  const [note, setNote] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  if (!user) {
+    return (
+      <p className="hint">
+        <button className="link" type="button" onClick={() => go("auth")}>Inicia sesión</button> para avisar si este lugar cerró, cambió de nombre o está repetido.
+      </p>
+    );
+  }
+  if (sent || myCafeReports.has(cafeId)) {
+    return <p className="hint">Gracias, ya reportaste este lugar. Un moderador lo revisará.</p>;
+  }
+  if (!open) {
+    return (
+      <>
+        <p className="hint" style={{ marginTop: 0 }}>Si cerró, ahora es otra cafetería o está repetida, avísanos.</p>
+        <button className="btn ghost sm" type="button" onClick={() => setOpen(true)}>Reportar un problema con este lugar</button>
+      </>
+    );
+  }
+  return (
+    <form
+      className="form"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setErr("");
+        setBusy(true);
+        try {
+          await reportCafe(cafeId, reason, note.trim());
+          setSent(true);
+        } catch (x) {
+          setErr(x instanceof Error ? x.message : "No se pudo enviar el reporte");
+        }
+        setBusy(false);
+      }}
+    >
+      <label htmlFor="crreason">
+        ¿Qué pasa con este lugar?
+        <select id="crreason" className="field" value={reason} onChange={(e) => setReason(e.target.value as CafeReason)}>
+          {CAFE_REASONS.map((r) => <option key={r.code} value={r.code}>{r.label}</option>)}
+        </select>
+      </label>
+      <label htmlFor="crnote">
+        Detalle (opcional)
+        <textarea
+          id="crnote"
+          className="field"
+          rows={2}
+          maxLength={300}
+          placeholder={reason === "other_place" ? "¿Cómo se llama ahora?" : "Cualquier dato que ayude al moderador"}
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+        />
+      </label>
+      <div className="err" role="alert">{err}</div>
+      <div className="row">
+        <button className="btn primary sm" type="submit" disabled={busy}>{busy ? "Enviando…" : "Enviar reporte"}</button>
+        <button className="btn sm" type="button" onClick={() => setOpen(false)}>Cancelar</button>
+      </div>
+    </form>
   );
 }
 

@@ -32,6 +32,7 @@ create table public.cafes (
   is_example boolean not null default false,
   source text,   -- 'osm' si se importó de OpenStreetMap
   osm_id text,   -- identificador en OpenStreetMap, evita duplicados al importar
+  status text not null default 'active' check (status in ('active', 'closed')),  -- 'closed' = oculta, solo la ven los moderadores
   created_at timestamptz not null default now()
 );
 
@@ -64,6 +65,17 @@ create table public.reports (
   unique (review_id, reporter_id)
 );
 
+create table public.cafe_reports (
+  id uuid primary key default gen_random_uuid(),
+  cafe_id uuid not null references public.cafes(id) on delete cascade,
+  reporter_id uuid not null references public.profiles(id) on delete cascade,
+  reason text not null check (reason in ('closed', 'other_place', 'duplicate', 'wrong_data')),
+  note text check (char_length(note) <= 300),
+  created_at timestamptz not null default now(),
+  unique (cafe_id, reporter_id)
+);
+
+create index on public.cafe_reports (cafe_id);
 create index on public.reviews (cafe_id);
 create index on public.reviews (user_id);
 create index on public.cafes (owner_id);
@@ -107,6 +119,7 @@ alter table public.cafes     enable row level security;
 alter table public.reviews   enable row level security;
 alter table public.favorites enable row level security;
 alter table public.reports   enable row level security;
+alter table public.cafe_reports enable row level security;
 
 -- Perfiles: todos los ven; cada quien edita su nombre, pero nadie puede cambiarse el rol.
 create policy "perfiles visibles" on public.profiles for select using (true);
@@ -114,8 +127,10 @@ create policy "editar mi perfil" on public.profiles for update
   using (id = auth.uid())
   with check (id = auth.uid() and role = (select p.role from public.profiles p where p.id = auth.uid()));
 
--- Cafeterías: todos las ven; quien inicia sesión agrega; solo su autor o un admin edita o borra.
-create policy "cafeterias visibles" on public.cafes for select using (true);
+-- Cafeterías: todos ven las activas (las cerradas solo las ve un admin); quien inicia sesión agrega;
+-- solo su autor o un admin edita o borra.
+create policy "cafeterias visibles" on public.cafes for select
+  using (status = 'active' or public.is_admin());
 create policy "agregar cafeteria" on public.cafes for insert to authenticated
   with check (owner_id = auth.uid() and is_example = false);
 create policy "editar cafeteria" on public.cafes for update to authenticated
@@ -143,6 +158,15 @@ create policy "ver reportes" on public.reports for select to authenticated
 create policy "borrar reportes" on public.reports for delete to authenticated
   using (public.is_admin());
 
+-- Reportes de cafeterías (cerró, es otra, repetida, datos mal): cualquiera reporta una vez por cafetería;
+-- cada quien ve los suyos; el admin ve y borra todos.
+create policy "crear reporte de cafeteria" on public.cafe_reports for insert to authenticated
+  with check (reporter_id = auth.uid());
+create policy "ver reportes de cafeteria" on public.cafe_reports for select to authenticated
+  using (reporter_id = auth.uid() or public.is_admin());
+create policy "borrar reportes de cafeteria" on public.cafe_reports for delete to authenticated
+  using (public.is_admin());
+
 -- ============ Fotos (Storage) ============
 
 insert into storage.buckets (id, name, public)
@@ -158,4 +182,4 @@ create policy "borrar fotos propias" on storage.objects for delete to authentica
 
 -- ============ Actualizaciones en vivo ============
 
-alter publication supabase_realtime add table public.cafes, public.reviews, public.reports;
+alter publication supabase_realtime add table public.cafes, public.reviews, public.reports, public.cafe_reports;

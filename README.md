@@ -131,6 +131,21 @@ delete from public.cafes where source = 'osm';
 
 ---
 
+## Reportar cafeterías y mantener los datos al día
+
+Los datos de OpenStreetMap pueden traer lugares que ya cerraron o que hoy son otra cafetería. Para corregirlo entre todos:
+
+- **Cualquier persona con cuenta** ve en cada ficha la sección **¿Algo está mal?** y puede reportar: "Cerró permanentemente", "Ahora es otra cafetería", "Está repetida" o "Los datos están mal", con un detalle opcional. Cada persona reporta una vez por cafetería.
+- **El moderador** ve los reportes en **Moderar > Cafeterías reportadas** (el número rojo del botón Moderar cuenta reseñas y cafeterías pendientes) y decide:
+  - **Marcar como cerrada:** la oculta del mapa y la lista **sin borrarla**. Esto importa porque si la borraras, la próxima importación de OpenStreetMap la traería de vuelta. Aparece en **Cafeterías cerradas (ocultas)**, donde puedes **Reabrir**.
+  - **Descartar:** quita los reportes y la deja visible.
+  - **Ver ficha** y luego **Editar datos**, por ejemplo para cambiar "Blue Luna" por el nombre nuevo.
+- Nada se oculta solo: siempre decide el moderador.
+
+**Si ya tenías la app funcionando**, agrega lo necesario a tu base de datos una sola vez: `notepad supabase\migration-3-cafe-reports.sql`, `Ctrl + A`, `Ctrl + C`, y en Supabase **SQL Editor > New query**, pega y presiona **Run** (debe decir "Success"). Después sube la versión nueva de la app. Si tu proyecto es nuevo, `schema.sql` ya lo incluye.
+
+---
+
 ## Botón "Cómo llegar"
 
 En la ficha de cada cafetería (y con el botón **Ir** en el celular) hay dos formas de llegar:
@@ -156,7 +171,9 @@ Las reglas están escritas en `supabase/schema.sql` y las aplica la base de dato
 | Borrar una reseña | Quien la escribió, o un moderador |
 | Ver tus guardadas ("Quiero ir", "Ya fui") | Solo tú |
 | Reportar una reseña | Cualquier persona con cuenta |
-| Ver todos los reportes | Solo moderadores |
+| Ver todos los reportes (de reseñas y de cafeterías) | Solo moderadores |
+| Reportar un problema con una cafetería | Cualquier persona con cuenta, una vez por cafetería |
+| Ver las cafeterías marcadas como cerradas | Solo moderadores |
 | Cambiarse el rol a moderador | Nadie desde la app (solo con el SQL del Paso 7) |
 
 ## Qué hay en cada carpeta
@@ -164,7 +181,7 @@ Las reglas están escritas en `supabase/schema.sql` y las aplica la base de dato
 - `app/`: la página principal y los estilos (`globals.css`, el diseño oscuro).
 - `components/`: las pantallas (`views/`), el mapa (`MapView.tsx`) y la pieza central que conecta todo (`App.tsx`).
 - `lib/`: funciones de apoyo (horarios, distancias, rutas en `routing.ts`, conexión a Supabase).
-- `supabase/`: la base de datos (`schema.sql`), los ejemplos (`seed.sql`) y la migración de las columnas de importación (`migration-2-osm.sql`).
+- `supabase/`: la base de datos (`schema.sql`), los ejemplos (`seed.sql`) y las migraciones para quien ya tenía la app: columnas de importación (`migration-2-osm.sql`) y reportes de cafeterías (`migration-3-cafe-reports.sql`).
 - `scripts/`: el importador de cafeterías de OpenStreetMap (`import-osm.mjs`).
 
 ## Problemas comunes
@@ -180,6 +197,7 @@ Las reglas están escritas en `supabase/schema.sql` y las aplica la base de dato
 | "No pudimos calcular la ruta" | Los servidores gratuitos de rutas a veces fallan o están ocupados. Intenta de nuevo o usa Google Maps, Waze o Apple Maps desde la ficha. |
 | `import-osm.mjs` dice que no pudo descargar | Revisa tu internet y repite en unos minutos. |
 | Al correr `import-osm.sql` sale un error de columna `source` u `osm_id` | Falta el paso 9.1 (`migration-2-osm.sql`). |
+| No aparece la sección de reportes o falla al enviar un reporte | Falta ejecutar `migration-3-cafe-reports.sql` en Supabase. |
 
 ## Límites y notas
 

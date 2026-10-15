@@ -22,6 +22,7 @@ export type Cafe = {
   is_example: boolean;
   source: string | null;
   osm_id: string | null;
+  status?: "active" | "closed";
   created_at: string;
 };
 
@@ -46,6 +47,17 @@ export type Report = {
   review_id: string;
   reporter_id: string;
   reason: string;
+  created_at: string;
+};
+
+export type CafeReason = "closed" | "other_place" | "duplicate" | "wrong_data";
+
+export type CafeReport = {
+  id: string;
+  cafe_id: string;
+  reporter_id: string;
+  reason: CafeReason;
+  note: string | null;
   created_at: string;
 };
 

@@ -6,7 +6,7 @@ import { CafeCard } from "../ui";
 
 export default function ListView() {
   const { visible, loaded, cafes, filters, setFilters, user, favs, userLoc } = useApp();
-  const favCount = Object.keys(favs).length;
+  const favCount = cafes.filter((c) => favs[c.id]).length;
 
   return (
     <>

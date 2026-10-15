@@ -5,7 +5,7 @@ import type { User } from "@supabase/supabase-js";
 import dynamic from "next/dynamic";
 import { Ctx, type AppCtx, type Filters, type SaveCafeInput } from "@/lib/ctx";
 import { configured, sb } from "@/lib/supabase";
-import type { Cafe, Draft, FavStatus, Profile, Report, Review, View } from "@/lib/types";
+import type { Cafe, CafeReason, CafeReport, Draft, FavStatus, Profile, Report, Review, View } from "@/lib/types";
 import { km, newDraft, openState, shrinkImage, stateText, kmText } from "@/lib/utils";
 import { durText, fetchRoute, type Route, type RouteMode } from "@/lib/routing";
 import { Lightbox, Stars } from "./ui";
@@ -24,7 +24,9 @@ const isMobile = () => typeof window !== "undefined" && window.matchMedia("(max-
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
-  const [cafes, setCafes] = useState<Cafe[]>([]);
+  const [allCafes, setAllCafes] = useState<Cafe[]>([]);
+  const [cafeReports, setCafeReports] = useState<CafeReport[]>([]);
+  const [myCafeReports, setMyCafeReports] = useState<Set<string>>(new Set());
   const [reviews, setReviews] = useState<Review[]>([]);
   const [profiles, setProfiles] = useState<Record<string, Profile>>({});
   const [favs, setFavs] = useState<Record<string, FavStatus>>({});
@@ -75,7 +77,7 @@ export default function App() {
       return;
     }
     setLoadErr("");
-    setCafes((c.data || []) as Cafe[]);
+    setAllCafes((c.data || []) as Cafe[]);
     setReviews((r.data || []) as Review[]);
     const pm: Record<string, Profile> = {};
     ((p.data || []) as Profile[]).forEach((x) => (pm[x.id] = x));
@@ -83,10 +85,15 @@ export default function App() {
 
     const uid = userRef.current?.id;
     if (uid) {
-      const [f, mine] = await Promise.all([
+      const [f, mine, cr] = await Promise.all([
         sb.from("favorites").select("cafe_id,status").eq("user_id", uid),
         sb.from("reports").select("*").eq("reporter_id", uid),
+        // Un usuario recibe solo sus reportes; un moderador recibe todos.
+        sb.from("cafe_reports").select("*"),
       ]);
+      const crRows = (cr.data || []) as CafeReport[];
+      setCafeReports(crRows);
+      setMyCafeReports(new Set(crRows.filter((x) => x.reporter_id === uid).map((x) => x.cafe_id)));
       const fm: Record<string, FavStatus> = {};
       (f.data || []).forEach((x: { cafe_id: string; status: FavStatus }) => (fm[x.cafe_id] = x.status));
       setFavs(fm);
@@ -99,6 +106,8 @@ export default function App() {
       setFavs({});
       setMyReports(new Set());
       setReports([]);
+      setCafeReports([]);
+      setMyCafeReports(new Set());
     }
     setLoaded(true);
   }, []);
@@ -148,6 +157,9 @@ export default function App() {
   }, [notice]);
 
   /* ---------- derivados ---------- */
+  // Las cafeterías cerradas no salen en el mapa, la lista ni el ranking. Solo un moderador las recibe (para poder reabrirlas).
+  const cafes = useMemo(() => allCafes.filter((c) => c.status !== "closed"), [allCafes]);
+  const closedCafes = useMemo(() => allCafes.filter((c) => c.status === "closed"), [allCafes]);
   const me = user ? profiles[user.id] ?? null : null;
   const isAdmin = me?.role === "admin";
 
@@ -436,6 +448,38 @@ export default function App() {
     [load]
   );
 
+  const reportCafe = useCallback(
+    async (cafeId: string, reason: CafeReason, note: string) => {
+      const u = need();
+      const { error } = await sb.from("cafe_reports").insert({ cafe_id: cafeId, reporter_id: u.id, reason, note: note || null });
+      if (error && error.code !== "23505") throw new Error("No se pudo enviar el reporte: " + error.message);
+      setMyCafeReports((s) => new Set(s).add(cafeId));
+      await load();
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [user, load]
+  );
+
+  const setCafeClosed = useCallback(
+    async (cafeId: string, closed: boolean) => {
+      const { error } = await sb.from("cafes").update({ status: closed ? "closed" : "active" }).eq("id", cafeId);
+      if (error) throw new Error("No se pudo cambiar: " + error.message);
+      // Al cerrarla se da por atendido lo que reportaron.
+      if (closed) await sb.from("cafe_reports").delete().eq("cafe_id", cafeId);
+      if (closed) setSelId((cur) => (cur === cafeId ? null : cur));
+      await load();
+    },
+    [load]
+  );
+
+  const dismissCafeReports = useCallback(
+    async (cafeId: string) => {
+      await sb.from("cafe_reports").delete().eq("cafe_id", cafeId);
+      await load();
+    },
+    [load]
+  );
+
   const toggleFav = useCallback(
     async (cafeId: string, st: FavStatus) => {
       const u = need();
@@ -472,7 +516,7 @@ export default function App() {
   }, []);
 
   const ctx: AppCtx = {
-    user, me, isAdmin, cafes, visible, reviews, profiles, favs, reports, myReports, loaded, userLoc,
+    user, me, isAdmin, cafes, closedCafes, cafeReports, myCafeReports, visible, reviews, profiles, favs, reports, myReports, loaded, userLoc,
     view, selId, profId, draft, placing, filters, rankTag, rankBarrio,
     setFilters: (f) => setFiltersRaw((x) => ({ ...x, ...f })),
     setRank: (f) => {
@@ -483,7 +527,7 @@ export default function App() {
     patchDraft: (p) => setDraft((d) => (d ? { ...d, ...p } : d)),
     go, select, showOnMap, locate, stats, nameOf, distanceTo,
     route: route && route.cafeId === selId ? route : null, routeBusy, routeErr, requestRoute, clearRoute,
-    uploadPhoto, saveCafe, deleteCafe, addReview, deleteReview, reportReview, dismissReports, toggleFav, renameMe, signOut,
+    uploadPhoto, saveCafe, deleteCafe, addReview, deleteReview, reportReview, dismissReports, reportCafe, setCafeClosed, dismissCafeReports, toggleFav, renameMe, signOut,
   };
 
   /* ---------- pantalla de configuración pendiente ---------- */
@@ -499,7 +543,7 @@ export default function App() {
     );
   }
 
-  const reportedCount = new Set(reports.map((r) => r.review_id)).size;
+  const reportedCount = new Set(reports.map((r) => r.review_id)).size + new Set(cafeReports.map((r) => r.cafe_id)).size;
   const selCafe = cafes.find((c) => c.id === selId);
   const mapCafes = view === "list" ? visible : cafes;
 
